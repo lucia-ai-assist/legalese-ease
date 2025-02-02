@@ -1,112 +1,13 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { OpenAI } from "https://deno.land/x/openai@v4.24.0/mod.ts"
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
-// Function to split text into chunks of roughly equal size
-function splitTextIntoChunks(text: string, maxChunkSize: number = 10000): string[] {
-  const chunks: string[] = [];
-  let currentChunk = "";
-  const sentences = text.split(/[.!?]+/); // Split by sentence endings
-
-  for (const sentence of sentences) {
-    if ((currentChunk + sentence).length > maxChunkSize && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = "";
-    }
-    currentChunk += sentence + ". ";
-  }
-
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk.trim());
-  }
-
-  return chunks;
-}
-
-// Function to merge analysis results
-function mergeAnalysisResults(results: any[]): any {
-  const merged = {
-    keyTerms: new Set<string>(),
-    risks: new Set<string>(),
-    obligations: new Set<string>()
-  };
-
-  results.forEach(result => {
-    result.keyTerms?.forEach((term: string) => merged.keyTerms.add(term));
-    result.risks?.forEach((risk: string) => merged.risks.add(risk));
-    result.obligations?.forEach((obligation: string) => merged.obligations.add(obligation));
-  });
-
-  return {
-    keyTerms: Array.from(merged.keyTerms),
-    risks: Array.from(merged.risks),
-    obligations: Array.from(merged.obligations)
-  };
-}
-
-// Function to safely parse JSON
-function safeJSONParse(text: string) {
-  try {
-    // Remove any markdown code block syntax if present
-    const cleanText = text.replace(/```json\n|\n```/g, '');
-    return JSON.parse(cleanText);
-  } catch (error) {
-    console.error('JSON parsing error:', error);
-    console.log('Problematic text:', text);
-    return { keyTerms: [], risks: [], obligations: [] };
-  }
-}
-
-// Function to analyze a chunk with retry logic
-async function analyzeChunkWithRetry(openai: OpenAI, chunk: string, retries = 3, initialDelay = 1000) {
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      console.log(`Attempting analysis of chunk (attempt ${attempt + 1}/${retries})`);
-      
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a legal document analyzer. Analyze the given text and respond with a JSON object containing three arrays: keyTerms, risks, and obligations. Do not include any markdown formatting in your response."
-          },
-          {
-            role: "user",
-            content: `Analyze this portion of a legal document and provide:
-            1. Key Terms: Important defined terms and their meanings
-            2. Risks: Potential risks or liabilities
-            3. Obligations: Key responsibilities and commitments
-            
-            Document portion:
-            ${chunk}`
-          }
-        ],
-        temperature: 0.5,
-        max_tokens: 1000
-      });
-
-      return safeJSONParse(completion.choices[0].message.content || '{}');
-    } catch (error) {
-      console.error(`Error on attempt ${attempt + 1}:`, error);
-      
-      if (error.message.includes('Rate limit') && attempt < retries - 1) {
-        const delay = initialDelay * Math.pow(2, attempt); // Exponential backoff
-        console.log(`Rate limit hit. Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      
-      if (attempt === retries - 1) {
-        throw error; // Throw on final attempt
-      }
-    }
-  }
-}
+const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -118,45 +19,67 @@ serve(async (req) => {
     const { documentText } = await req.json();
     console.log('Received document text for analysis');
 
-    // Initialize OpenAI client
-    const openai = new OpenAI({
-      apiKey: Deno.env.get('OPENAI_API_KEY'),
-    });
-    console.log('OpenAI client initialized');
+    if (!documentText) {
+      throw new Error('No document text provided');
+    }
 
-    // Split text into manageable chunks
-    const chunks = splitTextIntoChunks(documentText);
-    console.log(`Split document into ${chunks.length} chunks`);
-
-    // Analyze chunks with retry logic
-    const analysisPromises = chunks.map(async (chunk, index) => {
-      console.log(`Starting analysis of chunk ${index + 1}/${chunks.length}`);
-      return await analyzeChunkWithRetry(openai, chunk);
-    });
-
-    // Wait for all chunks to be analyzed
-    const chunkResults = await Promise.all(analysisPromises);
-    console.log('All chunks analyzed successfully');
-
-    // Merge results from all chunks
-    const mergedAnalysis = mergeAnalysisResults(chunkResults);
-    console.log('Analysis results merged successfully');
-
-    return new Response(
-      JSON.stringify(mergedAnalysis),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
+    // Call OpenAI API to analyze the document
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a legal document analyzer. Analyze the provided text and extract key terms, risks, and obligations. Return the results in a JSON format with three arrays: keyTerms, risks, and obligations. Do not use markdown formatting in your response.'
+          },
+          {
+            role: 'user',
+            content: documentText
+          }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('OpenAI API error:', error);
+      throw new Error(error);
+    }
+
+    const data = await response.json();
+    console.log('Successfully received OpenAI response');
+
+    // Extract the content from the response
+    const analysisText = data.choices[0].message.content;
+    
+    // Parse the response into the expected format
+    let analysis;
+    try {
+      analysis = JSON.parse(analysisText);
+    } catch (e) {
+      console.error('Error parsing OpenAI response:', e);
+      // If parsing fails, attempt to extract information using a basic format
+      analysis = {
+        keyTerms: [],
+        risks: [],
+        obligations: []
+      };
+    }
+
+    return new Response(JSON.stringify(analysis), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
   } catch (error) {
     console.error('Error in analyze-document function:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      },
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });
