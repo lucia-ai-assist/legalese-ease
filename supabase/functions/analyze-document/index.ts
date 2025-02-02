@@ -15,10 +15,11 @@ serve(async (req) => {
   try {
     const { documentText } = await req.json()
 
-    const openAiConfig = new Configuration({
+    // Create OpenAI configuration
+    const configuration = new Configuration({
       apiKey: Deno.env.get('OPENAI_API_KEY'),
     })
-    const openai = new OpenAIApi(openAiConfig)
+    const openai = new OpenAIApi(configuration)
 
     const prompt = `Analyze the following legal document and provide:
     1. Key Terms: Important defined terms and their meanings
@@ -30,23 +31,14 @@ serve(async (req) => {
     
     Please format the response as a JSON object with three arrays: keyTerms, risks, and obligations.`
 
-    const completion = await openai.createChatCompletion({
+    const response = await openai.createCompletion({
       model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: "You are a legal document analyzer. Analyze documents and return results in JSON format with keyTerms, risks, and obligations arrays."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
+      prompt: prompt,
+      max_tokens: 1000,
       temperature: 0.5,
-      max_tokens: 1000
     })
 
-    const analysis = JSON.parse(completion.data.choices[0].message?.content || '{}')
+    const analysis = JSON.parse(response.data.choices[0].text || '{}')
 
     return new Response(
       JSON.stringify(analysis),
