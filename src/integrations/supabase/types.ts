@@ -9,47 +9,6 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      bullet_points: {
-        Row: {
-          created_at: string
-          experience_level: string
-          generated_points: string[]
-          id: string
-          industry: string
-          job_title: string
-          skills: string
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          experience_level: string
-          generated_points: string[]
-          id?: string
-          industry: string
-          job_title: string
-          skills: string
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          experience_level?: string
-          generated_points?: string[]
-          id?: string
-          industry?: string
-          job_title?: string
-          skills?: string
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "bullet_points_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       linkedin_profiles: {
         Row: {
           created_at: string | null
@@ -86,30 +45,6 @@ export type Database = {
           skills?: Json | null
           title?: string | null
           updated_at?: string | null
-        }
-        Relationships: []
-      }
-      profiles: {
-        Row: {
-          created_at: string
-          email: string | null
-          id: string
-          subscription_status: boolean | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          email?: string | null
-          id: string
-          subscription_status?: boolean | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string | null
-          id?: string
-          subscription_status?: boolean | null
-          updated_at?: string
         }
         Relationships: []
       }
