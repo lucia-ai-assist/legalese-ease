@@ -30,14 +30,23 @@ serve(async (req) => {
     
     Please format the response as a JSON object with three arrays: keyTerms, risks, and obligations.`
 
-    const response = await openai.createCompletion({
+    const completion = await openai.createChatCompletion({
       model: "gpt-4o",
-      prompt: prompt,
-      max_tokens: 1000,
+      messages: [
+        {
+          role: "system",
+          content: "You are a legal document analyzer. Analyze documents and return results in JSON format with keyTerms, risks, and obligations arrays."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
       temperature: 0.5,
+      max_tokens: 1000
     })
 
-    const analysis = JSON.parse(response.data.choices[0].text || '{}')
+    const analysis = JSON.parse(completion.data.choices[0].message?.content || '{}')
 
     return new Response(
       JSON.stringify(analysis),
