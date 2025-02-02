@@ -4,17 +4,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleAuth = async (type: "login" | "signup") => {
     try {
       setLoading(true);
+      setError(null);
+
+      if (!email || !password) {
+        setError("Please enter both email and password");
+        return;
+      }
+
       const { error } =
         type === "login"
           ? await supabase.auth.signInWithPassword({ email, password })
@@ -31,6 +41,7 @@ const Auth = () => {
         navigate("/");
       }
     } catch (error: any) {
+      setError(error.message);
       toast({
         title: "Error",
         description: error.message,
@@ -52,6 +63,14 @@ const Auth = () => {
             Sign in or create an account to continue
           </p>
         </div>
+
+        {error && (
+          <Alert variant="destructive">
+            <ExclamationTriangleIcon className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
         <div className="mt-8 space-y-6">
           <div className="rounded-md shadow-sm space-y-4">
             <Input
@@ -76,7 +95,7 @@ const Auth = () => {
               disabled={loading}
               className="w-full"
             >
-              Sign in
+              {loading ? "Loading..." : "Sign in"}
             </Button>
             <Button
               onClick={() => handleAuth("signup")}
@@ -84,7 +103,7 @@ const Auth = () => {
               variant="outline"
               className="w-full"
             >
-              Sign up
+              {loading ? "Loading..." : "Sign up"}
             </Button>
           </div>
         </div>
