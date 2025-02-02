@@ -7,6 +7,48 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Function to split text into chunks of roughly equal size
+function splitTextIntoChunks(text: string, maxChunkSize: number = 10000): string[] {
+  const chunks: string[] = [];
+  let currentChunk = "";
+  const sentences = text.split(/[.!?]+/); // Split by sentence endings
+
+  for (const sentence of sentences) {
+    if ((currentChunk + sentence).length > maxChunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = "";
+    }
+    currentChunk += sentence + ". ";
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks;
+}
+
+// Function to merge analysis results
+function mergeAnalysisResults(results: any[]): any {
+  const merged = {
+    keyTerms: new Set<string>(),
+    risks: new Set<string>(),
+    obligations: new Set<string>()
+  };
+
+  results.forEach(result => {
+    result.keyTerms?.forEach((term: string) => merged.keyTerms.add(term));
+    result.risks?.forEach((risk: string) => merged.risks.add(risk));
+    result.obligations?.forEach((obligation: string) => merged.obligations.add(obligation));
+  });
+
+  return {
+    keyTerms: Array.from(merged.keyTerms),
+    risks: Array.from(merged.risks),
+    obligations: Array.from(merged.obligations)
+  };
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -23,37 +65,50 @@ serve(async (req) => {
     })
     console.log('OpenAI client initialized')
 
-    console.log('Sending request to OpenAI')
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Changed from gpt-4o to gpt-4o-mini
-      messages: [
-        {
-          role: "system",
-          content: "You are a legal document analyzer. Analyze documents and return results in JSON format with keyTerms, risks, and obligations arrays."
-        },
-        {
-          role: "user",
-          content: `Analyze this legal document and provide:
-          1. Key Terms: Important defined terms and their meanings
-          2. Risks: Potential risks or liabilities
-          3. Obligations: Key responsibilities and commitments
-          
-          Document:
-          ${documentText}
-          
-          Format the response as a JSON object with three arrays: keyTerms, risks, and obligations.`
-        }
-      ],
-      temperature: 0.5,
-      max_tokens: 1000
-    })
-    console.log('Received response from OpenAI')
+    // Split text into manageable chunks
+    const chunks = splitTextIntoChunks(documentText);
+    console.log(`Split document into ${chunks.length} chunks`);
 
-    const analysis = JSON.parse(completion.choices[0].message.content || '{}')
-    console.log('Successfully parsed analysis result')
+    // Analyze each chunk
+    const analysisPromises = chunks.map(async (chunk, index) => {
+      console.log(`Analyzing chunk ${index + 1}/${chunks.length}`);
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a legal document analyzer. Analyze documents and return results in JSON format with keyTerms, risks, and obligations arrays."
+          },
+          {
+            role: "user",
+            content: `Analyze this portion of a legal document and provide:
+            1. Key Terms: Important defined terms and their meanings
+            2. Risks: Potential risks or liabilities
+            3. Obligations: Key responsibilities and commitments
+            
+            Document portion:
+            ${chunk}
+            
+            Format the response as a JSON object with three arrays: keyTerms, risks, and obligations.`
+          }
+        ],
+        temperature: 0.5,
+        max_tokens: 1000
+      });
+
+      return JSON.parse(completion.choices[0].message.content || '{}');
+    });
+
+    // Wait for all chunks to be analyzed
+    const chunkResults = await Promise.all(analysisPromises);
+    console.log('All chunks analyzed successfully');
+
+    // Merge results from all chunks
+    const mergedAnalysis = mergeAnalysisResults(chunkResults);
+    console.log('Analysis results merged successfully');
 
     return new Response(
-      JSON.stringify(analysis),
+      JSON.stringify(mergedAnalysis),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
