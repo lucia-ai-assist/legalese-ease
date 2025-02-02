@@ -62,29 +62,12 @@ function safeJSONParse(text: string) {
   }
 }
 
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
-
-  try {
-    const { documentText } = await req.json()
-    console.log('Received document text for analysis')
-
-    // Initialize OpenAI client
-    const openai = new OpenAI({
-      apiKey: Deno.env.get('OPENAI_API_KEY'),
-    })
-    console.log('OpenAI client initialized')
-
-    // Split text into manageable chunks
-    const chunks = splitTextIntoChunks(documentText);
-    console.log(`Split document into ${chunks.length} chunks`);
-
-    // Analyze each chunk
-    const analysisPromises = chunks.map(async (chunk, index) => {
-      console.log(`Analyzing chunk ${index + 1}/${chunks.length}`);
+// Function to analyze a chunk with retry logic
+async function analyzeChunkWithRetry(openai: OpenAI, chunk: string, retries = 3, initialDelay = 1000) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      console.log(`Attempting analysis of chunk (attempt ${attempt + 1}/${retries})`);
+      
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
@@ -108,6 +91,47 @@ serve(async (req) => {
       });
 
       return safeJSONParse(completion.choices[0].message.content || '{}');
+    } catch (error) {
+      console.error(`Error on attempt ${attempt + 1}:`, error);
+      
+      if (error.message.includes('Rate limit') && attempt < retries - 1) {
+        const delay = initialDelay * Math.pow(2, attempt); // Exponential backoff
+        console.log(`Rate limit hit. Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      if (attempt === retries - 1) {
+        throw error; // Throw on final attempt
+      }
+    }
+  }
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { documentText } = await req.json();
+    console.log('Received document text for analysis');
+
+    // Initialize OpenAI client
+    const openai = new OpenAI({
+      apiKey: Deno.env.get('OPENAI_API_KEY'),
+    });
+    console.log('OpenAI client initialized');
+
+    // Split text into manageable chunks
+    const chunks = splitTextIntoChunks(documentText);
+    console.log(`Split document into ${chunks.length} chunks`);
+
+    // Analyze chunks with retry logic
+    const analysisPromises = chunks.map(async (chunk, index) => {
+      console.log(`Starting analysis of chunk ${index + 1}/${chunks.length}`);
+      return await analyzeChunkWithRetry(openai, chunk);
     });
 
     // Wait for all chunks to be analyzed
@@ -124,15 +148,15 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       },
-    )
+    );
   } catch (error) {
-    console.error('Error in analyze-document function:', error)
+    console.error('Error in analyze-document function:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
       },
-    )
+    );
   }
-})
+});
