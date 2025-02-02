@@ -25,7 +25,7 @@ serve(async (req) => {
 
     console.log('Sending request to OpenAI')
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini", // Changed from gpt-4o to gpt-4o-mini
       messages: [
         {
           role: "system",
