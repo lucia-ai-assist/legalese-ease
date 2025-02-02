@@ -49,6 +49,19 @@ function mergeAnalysisResults(results: any[]): any {
   };
 }
 
+// Function to safely parse JSON
+function safeJSONParse(text: string) {
+  try {
+    // Remove any markdown code block syntax if present
+    const cleanText = text.replace(/```json\n|\n```/g, '');
+    return JSON.parse(cleanText);
+  } catch (error) {
+    console.error('JSON parsing error:', error);
+    console.log('Problematic text:', text);
+    return { keyTerms: [], risks: [], obligations: [] };
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -77,7 +90,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a legal document analyzer. Analyze documents and return results in JSON format with keyTerms, risks, and obligations arrays."
+            content: "You are a legal document analyzer. Analyze the given text and respond with a JSON object containing three arrays: keyTerms, risks, and obligations. Do not include any markdown formatting in your response."
           },
           {
             role: "user",
@@ -87,16 +100,14 @@ serve(async (req) => {
             3. Obligations: Key responsibilities and commitments
             
             Document portion:
-            ${chunk}
-            
-            Format the response as a JSON object with three arrays: keyTerms, risks, and obligations.`
+            ${chunk}`
           }
         ],
         temperature: 0.5,
         max_tokens: 1000
       });
 
-      return JSON.parse(completion.choices[0].message.content || '{}');
+      return safeJSONParse(completion.choices[0].message.content || '{}');
     });
 
     // Wait for all chunks to be analyzed
