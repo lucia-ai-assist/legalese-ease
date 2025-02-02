@@ -41,6 +41,13 @@ export const DocumentAnalyzer = () => {
 
     try {
       setLoading(true);
+
+      // Get the current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        throw new Error('User not authenticated');
+      }
       
       // Upload file to Supabase Storage
       const fileExt = file.name.split('.').pop();
@@ -69,7 +76,7 @@ export const DocumentAnalyzer = () => {
 
       if (analysisError) throw analysisError;
 
-      // Save analysis to database
+      // Save analysis to database with user_id
       const { error: dbError } = await supabase
         .from('document_analyses')
         .insert({
@@ -78,6 +85,7 @@ export const DocumentAnalyzer = () => {
           key_terms: analysisData.keyTerms,
           risks: analysisData.risks,
           obligations: analysisData.obligations,
+          user_id: user.id
         });
 
       if (dbError) throw dbError;

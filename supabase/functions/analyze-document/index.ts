@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { Configuration, OpenAIApi } from 'https://esm.sh/openai@3.1.0'
 
 const corsHeaders = {
@@ -8,8 +7,9 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
@@ -31,7 +31,7 @@ serve(async (req) => {
     Please format the response as a JSON object with three arrays: keyTerms, risks, and obligations.`
 
     const completion = await openai.createChatCompletion({
-      model: "gpt-4",
+      model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
     })
 
@@ -45,6 +45,7 @@ serve(async (req) => {
       },
     )
   } catch (error) {
+    console.error('Error in analyze-document function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
