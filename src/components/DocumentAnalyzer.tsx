@@ -12,10 +12,13 @@ interface AnalysisResult {
   obligations: string[];
 }
 
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const DocumentAnalyzer = () => {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const { toast } = useToast();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -36,11 +39,12 @@ export const DocumentAnalyzer = () => {
     }
   };
 
-  const analyzeDocument = async () => {
+  const analyzeDocument = async (retryAttempt = 0) => {
     if (!file) return;
 
     try {
       setLoading(true);
+      setRetryCount(retryAttempt);
 
       // Get the current user
       const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -74,7 +78,19 @@ export const DocumentAnalyzer = () => {
           body: { documentText: textContent },
         });
 
-      if (analysisError) throw analysisError;
+      if (analysisError) {
+        const errorMessage = analysisError.message || '';
+        if (errorMessage.includes('Rate limit') && retryAttempt < 3) {
+          const backoffDelay = Math.pow(2, retryAttempt) * 1000; // Exponential backoff
+          toast({
+            title: "Rate limit reached",
+            description: `Retrying in ${backoffDelay/1000} seconds...`,
+          });
+          await delay(backoffDelay);
+          return analyzeDocument(retryAttempt + 1);
+        }
+        throw analysisError;
+      }
 
       // Save analysis to database with user_id
       const { error: dbError } = await supabase
@@ -103,6 +119,7 @@ export const DocumentAnalyzer = () => {
       });
     } finally {
       setLoading(false);
+      setRetryCount(0);
     }
   };
 
@@ -137,12 +154,12 @@ export const DocumentAnalyzer = () => {
           <span className="text-sm text-muted-foreground">{file.name}</span>
         )}
         <Button
-          onClick={analyzeDocument}
+          onClick={() => analyzeDocument(0)}
           disabled={!file || loading}
           className="ml-auto"
         >
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {loading ? "Analyzing..." : "Analyze Document"}
+          {loading ? `Analyzing${retryCount > 0 ? ` (Retry ${retryCount}/3)` : ''}...` : "Analyze Document"}
         </Button>
       </div>
 
