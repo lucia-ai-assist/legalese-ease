@@ -9,6 +9,42 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      document_analyses: {
+        Row: {
+          created_at: string | null
+          file_path: string
+          id: string
+          key_terms: Json | null
+          obligations: Json | null
+          original_filename: string
+          risks: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_path: string
+          id?: string
+          key_terms?: Json | null
+          obligations?: Json | null
+          original_filename: string
+          risks?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          file_path?: string
+          id?: string
+          key_terms?: Json | null
+          obligations?: Json | null
+          original_filename?: string
+          risks?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       linkedin_profiles: {
         Row: {
           created_at: string | null
